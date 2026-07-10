@@ -146,3 +146,8 @@ data/**/*
 
 # Temporary scratch folder
 scratch/
+
+# Antigravity rules
+.gemini/**/*
+!.gemini/**/rules/
+!.gemini/**/rules/**/*
