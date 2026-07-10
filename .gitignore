@@ -139,3 +139,7 @@ Thumbs.db
 
 # Project planning
 plan/
+
+# Data files
+data/**/*
+!data/**/.gitkeep
