@@ -143,3 +143,6 @@ plan/
 # Data files
 data/**/*
 !data/**/.gitkeep
+
+# Temporary scratch folder
+scratch/
