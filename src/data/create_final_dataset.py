@@ -1,17 +1,25 @@
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 import pandas as pd
 import numpy as np
-import os
+from config import config
+from common import setup_logger
+
+logger = setup_logger("create_final_dataset")
+
 
 class FinalDatasetCreator:
-    def __init__(self, base_path=r"D:\DATA"):
-        self.base_path = base_path
-        self.processed_path = os.path.join(base_path, "data", "processed")
-        self.merged_path = os.path.join(base_path, "data", "merged")
-        os.makedirs(self.merged_path, exist_ok=True)
+    def __init__(self):
+        self.processed_dir = config.paths.PROCESSED_DIR
+        self.merged_dir = config.paths.MERGED_DIR
 
     def create_final_dataset(self):
-        orders = pd.read_csv(os.path.join(self.processed_path, "cleaned_orders.csv"))
-        sessions = pd.read_csv(os.path.join(self.processed_path, "cleaned_behavioral_sessions.csv"))
+        logger.info("Đang tạo final dataset...")
+
+        orders = pd.read_csv(self.processed_dir / config.data.CLEANED_ORDERS)
+        sessions = pd.read_csv(self.processed_dir / config.data.CLEANED_BEHAVIORAL_SESSIONS)
 
         df = sessions.merge(
             orders[['order_id', 'order_value', 'payment_value', 'customer_city',
@@ -19,27 +27,17 @@ class FinalDatasetCreator:
             on='order_id', how='left'
         )
 
-        # Xử lý missing
         df['order_value'] = df['order_value'].fillna(0)
         df['payment_value'] = df['payment_value'].fillna(0)
         df['delivery_days'] = df['delivery_days'].fillna(df['delivery_days'].median())
 
         # Feature engineering
         df['log_order_value'] = np.log1p(df['order_value'])
+        df['avg_time_per_page'] = np.where(df['pages_viewed'] > 0,
+                                           df['session_duration_seconds'] / df['pages_viewed'], 0)
+        df['cart_per_page'] = np.where(df['pages_viewed'] > 0,
+                                       df['cart_additions'] / df['pages_viewed'], 0)
 
-        # Tránh chia cho 0
-        df['avg_time_per_page'] = np.where(
-            df['pages_viewed'] > 0,
-            df['session_duration_seconds'] / df['pages_viewed'],
-            0
-        )
-        df['cart_per_page'] = np.where(
-            df['pages_viewed'] > 0,
-            df['cart_additions'] / df['pages_viewed'],
-            0
-        )
-
-        # High engagement flag
         duration_median = df['session_duration_seconds'].median()
         pages_median = df['pages_viewed'].median()
         df['is_high_engagement'] = (
@@ -49,10 +47,9 @@ class FinalDatasetCreator:
 
         df['has_coupon'] = df['coupon_applied'].astype(int)
 
-        # Lưu
-        output_path = os.path.join(self.merged_path, "final_dataset.csv")
+        output_path = self.merged_dir / config.data.FINAL_DATASET
         df.to_csv(output_path, index=False)
-
+        logger.info(f"Đã lưu: {output_path}")
 
         return df
 
@@ -61,5 +58,5 @@ class FinalDatasetCreator:
 
 
 if __name__ == "__main__":
-    creator = FinalDatasetCreator(base_path=r"D:\DATA")
+    creator = FinalDatasetCreator()
     creator.run()
