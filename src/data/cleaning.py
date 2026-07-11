@@ -1,169 +1,87 @@
-"""
-Data Cleaning Pipeline - Phiên bản nâng cao
-Dự án: Predicting Customer Order Value for an E-Commerce Platform
-"""
-
 import pandas as pd
-import numpy as np
 import os
-from datetime import datetime
 
 class DataCleaner:
-    def __init__(self, base_path: str = r"D:\DATA"):
+    def __init__(self, base_path=r"D:\DATA"):
         self.base_path = base_path
         self.raw_path = os.path.join(base_path, "data", "raw")
         self.synthetic_path = os.path.join(base_path, "data", "synthetic")
         self.processed_path = os.path.join(base_path, "data", "processed")
         os.makedirs(self.processed_path, exist_ok=True)
 
-        # Olist data
-        self.orders = None
-        self.order_items = None
-        self.customers = None
-        self.payments = None
-        self.products = None
+    def clean_orders(self):
+        print("Đang xử lý orders...")
 
-        # Synthetic data
-        self.customer_profile = None
-        self.sessions = None
-        self.session_activity = None
+        orders = pd.read_csv(os.path.join(self.raw_path, "olist_orders_dataset.csv"))
+        customers = pd.read_csv(os.path.join(self.raw_path, "olist_customers_dataset.csv"))
+        payments = pd.read_csv(os.path.join(self.raw_path, "olist_order_payments_dataset.csv"))
+        order_items = pd.read_csv(os.path.join(self.raw_path, "olist_order_items_dataset.csv"))
 
-        # Final cleaned data
-        self.final_data = None
+        # Chỉ giữ order delivered
+        df = orders[orders['order_status'] == 'delivered'].copy()
 
-    # ====================== LOAD DATA ======================
-    def load_data(self):
-        print("🔄 Đang load dữ liệu...")
-        # Olist
-        self.orders = pd.read_csv(os.path.join(self.raw_path, "olist_orders_dataset.csv"))
-        self.order_items = pd.read_csv(os.path.join(self.raw_path, "olist_order_items_dataset.csv"))
-        self.customers = pd.read_csv(os.path.join(self.raw_path, "olist_customers_dataset.csv"))
-        self.payments = pd.read_csv(os.path.join(self.raw_path, "olist_order_payments_dataset.csv"))
-        self.products = pd.read_csv(os.path.join(self.raw_path, "olist_products_dataset.csv"))
-
-        # Synthetic
-        self.customer_profile = pd.read_csv(os.path.join(self.synthetic_path, "customer_profile.csv"))
-        self.sessions = pd.read_csv(os.path.join(self.synthetic_path, "sessions.csv"))
-        self.session_activity = pd.read_csv(os.path.join(self.synthetic_path, "session_activity.csv"))
-
-        print("✅ Load dữ liệu thành công!")
-
-    # ====================== CLEAN OLIST DATA ======================
-    def clean_olist_data(self):
-        print("\n🔄 Đang cleaning Olist data...")
-
-        before_orders = len(self.orders)
-        # Loại bỏ cancelled và unavailable
-        self.orders = self.orders[~self.orders['order_status'].isin(['canceled', 'unavailable'])]
-        print(f"   - Loại bỏ cancelled/unavailable orders: {before_orders - len(self.orders)} dòng")
-
-        # Xử lý missing datetime
-        self.orders['order_approved_at'] = self.orders['order_approved_at'].fillna(
-            self.orders['order_purchase_timestamp']
-        )
-
-        # Convert datetime
-        dt_cols = ['order_purchase_timestamp', 'order_approved_at',
-                   'order_delivered_carrier_date', 'order_delivered_customer_date']
-        for col in dt_cols:
-            self.orders[col] = pd.to_datetime(self.orders[col], errors='coerce')
-
-        # Clean order_items
-        self.order_items = self.order_items.dropna(subset=['order_id', 'product_id', 'price'])
-
-        # Clean customers
-        self.customers = self.customers.dropna(subset=['customer_id', 'customer_unique_id'])
-
-        print("✅ Cleaning Olist data hoàn tất!")
-
-    # ====================== CLEAN SYNTHETIC DATA ======================
-    def clean_synthetic_data(self):
-        print("\n🔄 Đang cleaning Synthetic data...")
-
-        # Xử lý missing values
-        self.session_activity['product_id'] = self.session_activity['product_id'].fillna('UNKNOWN')
-        self.session_activity['search_keyword'] = self.session_activity['search_keyword'].fillna('No Search')
-        self.session_activity['add_to_cart_quantity'] = self.session_activity['add_to_cart_quantity'].fillna(0)
-
-        # Loại bỏ activity có duration bất thường
-        before_act = len(self.session_activity)
-        self.session_activity = self.session_activity[
-            (self.session_activity['duration_seconds'] >= 5) &
-            (self.session_activity['duration_seconds'] <= 300)
-        ]
-        print(f"   - Loại bỏ activity duration bất thường: {before_act - len(self.session_activity)} dòng")
-
-        # Chuẩn hóa traffic_source
-        self.sessions['traffic_source'] = self.sessions['traffic_source'].str.lower().str.strip()
-
-        # Xử lý outlier monthly_income
-        before_income = len(self.customer_profile)
-        q_low = self.customer_profile['monthly_income'].quantile(0.01)
-        q_high = self.customer_profile['monthly_income'].quantile(0.99)
-        self.customer_profile = self.customer_profile[
-            (self.customer_profile['monthly_income'] >= q_low) &
-            (self.customer_profile['monthly_income'] <= q_high)
-        ]
-        print(f"   - Loại bỏ outlier monthly_income: {before_income - len(self.customer_profile)} dòng")
-
-        print("✅ Cleaning Synthetic data hoàn tất!")
-
-    # ====================== MERGE DATA ======================
-    def merge_data(self):
-        print("\n🔄 Đang merge dữ liệu...")
-
-        # Tính order_value từ order_items
-        order_value_df = self.order_items.groupby('order_id').agg({
-            'price': 'sum',
-            'freight_value': 'sum'
-        }).reset_index()
-        order_value_df['order_value'] = order_value_df['price'] + order_value_df['freight_value']
-
-        # Merge orders + order_value + payments
-        orders_clean = self.orders.merge(
-            order_value_df[['order_id', 'order_value']], on='order_id', how='left'
-        )
-        orders_clean = orders_clean.merge(
-            self.payments.groupby('order_id')['payment_value'].sum().reset_index(),
-            on='order_id', how='left'
-        )
-
-        # Merge với customers
-        orders_clean = orders_clean.merge(
-            self.customers[['customer_id', 'customer_unique_id', 'customer_city', 'customer_state']],
+        # Merge customer info
+        df = df.merge(
+            customers[['customer_id', 'customer_city', 'customer_state']],
             on='customer_id', how='left'
         )
 
-        # Merge với customer_profile (synthetic)
-        orders_clean = orders_clean.merge(self.customer_profile, on='customer_id', how='left')
+        # Tính tổng payment_value
+        payment_value = payments.groupby('order_id', as_index=False)['payment_value'].sum()
+        df = df.merge(payment_value, on='order_id', how='left')
 
-        self.final_data = orders_clean
-        print(f"✅ Merge hoàn tất! Tổng số dòng: {len(self.final_data)}")
+        # Tính order_value = tổng price của các item trong đơn
+        order_value = order_items.groupby('order_id', as_index=False)['price'].sum()
+        order_value.columns = ['order_id', 'order_value']
+        df = df.merge(order_value, on='order_id', how='left')
 
-    # ====================== SAVE DATA ======================
-    def save_cleaned_data(self):
-        # Lưu bảng chính
-        output_file = os.path.join(self.processed_path, "cleaned_orders.csv")
-        self.final_data.to_csv(output_file, index=False)
-        print(f"\n✅ Đã lưu cleaned data tại: {output_file}")
+        # Xử lý datetime
+        datetime_cols = ['order_purchase_timestamp', 'order_approved_at',
+                         'order_delivered_carrier_date', 'order_delivered_customer_date']
+        for col in datetime_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
 
-        # Lưu thêm các bảng synthetic đã clean (nếu cần)
-        self.sessions.to_csv(os.path.join(self.processed_path, "cleaned_sessions.csv"), index=False)
-        self.session_activity.to_csv(os.path.join(self.processed_path, "cleaned_session_activity.csv"), index=False)
-        print("✅ Đã lưu thêm cleaned_sessions.csv và cleaned_session_activity.csv")
+        df = df.dropna(subset=['order_purchase_timestamp', 'order_delivered_customer_date'])
+        df['delivery_days'] = (df['order_delivered_customer_date'] -
+                               df['order_purchase_timestamp']).dt.days
+        df = df[(df['delivery_days'] >= 0) & (df['delivery_days'] <= 60)]
 
-    # ====================== RUN PIPELINE ======================
-    def run_cleaning_pipeline(self):
-        print("🚀 Bắt đầu Data Cleaning Pipeline (Phiên bản nâng cao)...\n")
-        self.load_data()
-        self.clean_olist_data()
-        self.clean_synthetic_data()
-        self.merge_data()
-        self.save_cleaned_data()
-        print("\n🎉 Hoàn thành Data Cleaning Pipeline!")
+        # Fill missing
+        df['order_value'] = df['order_value'].fillna(0)
+        df['payment_value'] = df['payment_value'].fillna(0)
+
+        output_path = os.path.join(self.processed_path, "cleaned_orders.csv")
+        df.to_csv(output_path, index=False)
+        print(f"Đã lưu: cleaned_orders.csv ({len(df):,} dòng)")
+
+        return df
+
+    def clean_behavioral_sessions(self):
+        print("Đang xử lý behavioral_sessions...")
+
+        df = pd.read_csv(os.path.join(self.synthetic_path, "behavioral_sessions.csv"))
+
+        df['order_id'] = df['order_id'].astype(str)
+        df['session_id'] = df['session_id'].astype(str)
+
+        df = df[df['cart_additions'] >= 1]
+        df = df[(df['session_duration_seconds'] >= 10) & (df['session_duration_seconds'] <= 3600)]
+        df = df[(df['pages_viewed'] >= 1) & (df['pages_viewed'] <= 80)]
+
+        output_path = os.path.join(self.processed_path, "cleaned_behavioral_sessions.csv")
+        df.to_csv(output_path, index=False)
+        print(f"Đã lưu: cleaned_behavioral_sessions.csv ({len(df):,} dòng)")
+
+        return df
+
+    def run(self):
+        print("=== BẮT ĐẦU CLEANING DATA ===\n")
+        self.clean_orders()
+        self.clean_behavioral_sessions()
+        print("\n=== HOÀN TẤT CLEANING ===")
 
 
-# ====================== MAIN ======================
 if __name__ == "__main__":
     cleaner = DataCleaner(base_path=r"D:\DATA")
-    cleaner.run_cleaning_pipeline()
+    cleaner.run()
