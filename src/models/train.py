@@ -47,7 +47,6 @@ from common import (
     wape,
     medape,
     save_object,
-    load_object,
     save_dataframe,
 )
 logger = setup_logger("train")
