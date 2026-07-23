@@ -130,6 +130,6 @@ Tracked at [GitHub Projects #5](https://github.com/users/alitonia/projects/5). 4
 
 ## Releases
 
-Complete deliverables package (92MB zip, 78 files) available at [v1.6.0](https://github.com/alitonia/customer_value_prediction/releases/tag/v1.6.0).
+Complete deliverables package (92MB zip, 78 files) available at [v1.7.0](https://github.com/alitonia/customer_value_prediction/releases/tag/v1.7.0).
 
 Regenerate locally: `bash scripts/package_deliverables.sh`
