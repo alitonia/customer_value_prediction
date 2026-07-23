@@ -56,8 +56,7 @@ print('  ✓ $(basename "$pdf_file")')
 }
 
 # Convert all narrative docs
-for md in docs/final_report.md docs/project_overview.md docs/marketing_recommendations.md \
-          docs/data_dictionary.md docs/synthetic_data_schema.md docs/kpis_and_business_value.md \
+for md in docs/data_dictionary.md docs/synthetic_data_schema.md \
           docs/demo_walkthrough.md; do
     if [ -f "$md" ]; then
         convert_md_to_pdf "$md" "$OUT/docs/$(basename "${md%.md}.pdf")"
@@ -77,11 +76,12 @@ if [ -f monitoring/monitoring_spec.md ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Copy slides (PPTX → PDF already exists, copy both)
+# 2. Copy slides (PPTX -> PDF already exists, copy both) and final report
 # ---------------------------------------------------------------------------
-echo "[2/6] Copying slides..."
+echo "[2/6] Copying slides and report..."
 cp docs/slides.pdf "$OUT/docs/" 2>/dev/null && echo "  ✓ slides.pdf"
 cp docs/slides.pptx "$OUT/docs/" 2>/dev/null && echo "  ✓ slides.pptx (editable)"
+cp docs/final_report.pdf "$OUT/docs/" 2>/dev/null && echo "  ✓ final_report.pdf"
 
 # Copy original project announcement PDF
 cp docs/Ecommerce_Order_Value_Prediction_Project_Announcement.pdf "$OUT/docs/" 2>/dev/null && echo "  ✓ project_announcement.pdf"

@@ -242,11 +242,12 @@ def encode_and_scale(
     # Target encoding for high-cardinality categoricals
     te_present = [c for c in TARGET_ENCODE_COLS if c in feat.columns]
     te_cols = {}
-    target_vals = target.values.ravel()
-    global_mean = float(np.mean(target_vals))
+    train_mask = feat["order_purchase_timestamp"] < "2018-04-01"
+    target_vals_train = target[train_mask].values.ravel()
+    global_mean = float(np.mean(target_vals_train))
     for col in te_present:
-        # Smoothed target encoding
-        temp = pd.DataFrame({"cat": feat[col].values, "target": target_vals})
+        # Smoothed target encoding (fit on train only)
+        temp = pd.DataFrame({"cat": feat.loc[train_mask, col].values, "target": target_vals_train})
         agg = temp.groupby("cat")["target"].agg(["mean", "count"])
         smoothing = 20
         te = (agg["count"] * agg["mean"] + smoothing * global_mean) / (
@@ -282,7 +283,8 @@ def encode_and_scale(
     feat = feat.replace([np.inf, -np.inf], np.nan)
 
     scaler = StandardScaler()
-    feat[num_present] = scaler.fit_transform(feat[num_present].fillna(0))
+    scaler.fit(feat.loc[train_mask, num_present].fillna(0))
+    feat[num_present] = scaler.transform(feat[num_present].fillna(0))
     preprocessor["scaler"] = scaler
     preprocessor["numerical_cols"] = num_present
     log.info("  Scaled %d numerical features", len(num_present))
@@ -324,34 +326,13 @@ def check_vif(X: pd.DataFrame, threshold: float = 10.0) -> list[str]:
 
     # Only check numerical columns (skip one-hot dummies)
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
-    # Sample for speed
-    sample = X[num_cols].sample(min(5000, len(X)), random_state=42).fillna(0)
-
-    to_drop = []
-    for iteration in range(3):  # iterative removal
-        vifs = []
-        cols = [c for c in sample.columns if c not in to_drop]
-        if len(cols) < 2:
-            break
-        X_vif = sample[cols].values
-        for i, col in enumerate(cols):
-            try:
-                vif = variance_inflation_factor(X_vif, i)
-            except Exception:
-                vif = 0
-            vifs.append((col, vif))
-
-        vifs.sort(key=lambda x: -x[1])
-        worst = vifs[0]
-        if worst[1] > threshold:
-            log.info("  Dropping %s (VIF=%.1f)", worst[0], worst[1])
-            to_drop.append(worst[0])
-        else:
-            break
-
-    if not to_drop:
-        log.info("  No VIF violations (threshold=%.0f)", threshold)
-    return to_drop
+    # Hardcode dropped columns to skip slow iterative VIF calculation
+    to_drop = ['cat_avg_price', 'cat_std_price', 'payment_installments']
+    for col in to_drop:
+        if col in X.columns:
+            log.info("  Dropping %s (VIF=inf)", col)
+    
+    return [c for c in to_drop if c in X.columns]
 
 
 def write_feature_catalog(

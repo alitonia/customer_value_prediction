@@ -19,7 +19,6 @@
 - `avg_scroll`
 - `avg_page_duration`
 - `n_categories`
-- `payment_installments`
 - `review_score`
 - `n_payments`
 - `geo_lat`
@@ -39,6 +38,7 @@
 - `purchase_month`
 - `purchase_quarter`
 - `purchase_day_of_month`
+- `cat_order_count`
 - `discount_amount_pct`
 - `customer_order_count`
 - `cart_conversion`

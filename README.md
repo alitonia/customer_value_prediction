@@ -2,7 +2,7 @@
 
 An end-to-end regression system that predicts the monetary value of an e-commerce order prior to checkout. Built on the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) and enriched with value-conditioned synthetic behavioral data.
 
-**Best model:** XGBoost — R² = 0.80, MAE = R$48, WAPE = 29%, MedAPE = 21%
+**Best model:** XGBoost — R² = 0.79, MAE = R$48, WAPE = 29%, MedAPE = 22%, MAPE = 29%
 
 **Key finding:** 13 of the 20 most important predictive features are synthetic behavioral features, validating the value-conditioned data generation design.
 
@@ -113,13 +113,12 @@ Time-based train/test split at 2018-04-01 (65,124 train / 32,460 test). XGBoost 
 
 | Document | Description |
 |---|---|
-| `docs/final_report.pdf` | Complete project report (10 sections) |
-| `docs/slides.pdf` | Presentation slides (12 slides) |
+| `docs/final_report.pdf` | Complete project report (Centralized) |
+| `docs/slides.pdf` | Presentation slides (PDF format) |
+| `docs/slides.pptx` | Presentation slides (Editable PPTX format) |
 | `docs/data_dictionary.md` | Every synthetic field: type, range, generation logic |
 | `docs/synthetic_data_schema.md` | ERD-aligned schema with causal design rationale |
-| `docs/kpis_and_business_value.md` | KPI targets, business impact analysis |
-| `docs/marketing_recommendations.md` | Actionable recommendations from model insights |
-| `docs/project_overview.md` | Technical module-by-module summary |
+| `docs/demo_walkthrough.md` | Step-by-step guide for running the demo |
 
 ---
 
@@ -131,6 +130,6 @@ Tracked at [GitHub Projects #5](https://github.com/users/alitonia/projects/5). 4
 
 ## Releases
 
-Complete deliverables package (92MB zip, 78 files) available at [v1.4.0](https://github.com/alitonia/customer_value_prediction/releases/tag/v1.4.0).
+Complete deliverables package (92MB zip, 78 files) available at [v1.6.0](https://github.com/alitonia/customer_value_prediction/releases/tag/v1.6.0).
 
 Regenerate locally: `bash scripts/package_deliverables.sh`

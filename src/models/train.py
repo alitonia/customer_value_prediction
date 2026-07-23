@@ -188,12 +188,13 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, dates: pd.Series) -> dict:
         results[name] = {"model": model, "metrics": metrics, "y_pred": y_pred}
 
         log.info(
-            "  %s: R²=%.4f  MAE_BRL=%.1f  WAPE=%.1f%%  MedAPE=%.1f%%",
+            "  %s: R²=%.4f  MAE_BRL=%.1f  WAPE=%.1f%%  MedAPE=%.1f%%  MAPE=%.1f%%",
             name,
             metrics["R2_log"],
             metrics["MAE_BRL"],
             metrics["WAPE_%"],
             metrics["MedAPE_%"],
+            metrics["MAPE_%"],
         )
 
     return results, X_train, X_test, y_train, y_test
@@ -286,8 +287,8 @@ def write_evaluation_report(results: dict, best_name: str, output_dir: Path) -> 
         "",
         "## Model Comparison",
         "",
-        "| Model | R² (log) | MAE (BRL) | RMSE (BRL) | WAPE (%) | MedAPE (%) | CV MAE (log) |",
-        "|---|---|---|---|---|---|---|",
+        "| Model | R² (log) | MAE (BRL) | RMSE (BRL) | WAPE (%) | MedAPE (%) | MAPE (%) | CV MAE (log) |",
+        "|---|---|---|---|---|---|---|---|",
     ]
 
     for name, res in sorted(results.items(), key=lambda x: -x[1]["metrics"]["R2_log"]):
@@ -296,7 +297,7 @@ def write_evaluation_report(results: dict, best_name: str, output_dir: Path) -> 
         lines.append(
             f"| {name}{marker} | {m['R2_log']:.4f} | {m['MAE_BRL']:.1f} | "
             f"{m['RMSE_BRL']:.1f} | {m['WAPE_%']:.1f} | {m['MedAPE_%']:.1f} | "
-            f"{m['CV_MAE_log']:.4f} ± {m['CV_MAE_std']:.4f} |"
+            f"{m['MAPE_%']:.1f} | {m['CV_MAE_log']:.4f} ± {m['CV_MAE_std']:.4f} |"
         )
 
     best_m = results[best_name]["metrics"]
@@ -310,6 +311,7 @@ def write_evaluation_report(results: dict, best_name: str, output_dir: Path) -> 
             f"| MAE | < R$25 | R${best_m['MAE_BRL']:.1f} | {'✓' if best_m['MAE_BRL'] < 25 else '✗'} |",
             f"| WAPE | < 16% | {best_m['WAPE_%']:.1f}% | {'✓' if best_m['WAPE_%'] < 16 else '✗'} |",
             f"| MedAPE | < 12% | {best_m['MedAPE_%']:.1f}% | {'✓' if best_m['MedAPE_%'] < 12 else '✗'} |",
+            f"| MAPE | < 15% | {best_m['MAPE_%']:.1f}% | {'✓' if best_m['MAPE_%'] < 15 else '✗'} |",
             "",
             "## Residual Analysis",
             "",
