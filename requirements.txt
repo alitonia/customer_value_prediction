@@ -29,3 +29,7 @@ ipykernel>=6.20.0
 pyarrow>=12.0.0
 statsmodels>=0.14.0
 nbformat>=5.8.0
+
+# Testing
+pytest>=7.0.0
+httpx>=0.24.0

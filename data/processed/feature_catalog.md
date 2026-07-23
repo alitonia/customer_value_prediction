@@ -1,11 +1,11 @@
 # Feature Catalog
 
-**Total features:** 159
+**Total features:** 180
 **Rows:** 97,584
 
 ## Feature Groups
 
-### Numerical (scaled) (25 features)
+### Numerical (scaled) (43 features)
 
 - `item_count`
 - `monthly_income`
@@ -22,11 +22,29 @@
 - `payment_installments`
 - `review_score`
 - `n_payments`
+- `geo_lat`
+- `geo_lng`
+- `customer_urban`
+- `cust_seller_distance_km`
+- `regional_price_index`
+- `seller_order_count`
+- `seller_avg_price`
+- `seller_item_count`
+- `seller_n_categories`
+- `seller_lat`
+- `seller_lng`
+- `customer_age_days`
+- `recency_days`
+- `frequency`
+- `purchase_month`
+- `purchase_quarter`
+- `purchase_day_of_month`
 - `customer_order_count`
 - `cart_conversion`
 - `engagement_rate`
 - `search_intensity`
 - `items_per_minute`
+- `loyalty_numeric`
 - `income_x_loyalty`
 - `log_income`
 - `purchase_hour`
@@ -38,10 +56,12 @@
 - `is_logged_in`
 - `is_marketing_opt_in`
 
-### One-hot encoded (129 features)
+### One-hot encoded (131 features)
 
+- `device_type_desktop`
 - `device_type_mobile`
 - `device_type_tablet`
+- `preferred_device_desktop`
 - `preferred_device_mobile`
 - `preferred_device_tablet`
 - `browser_chrome`
@@ -170,18 +190,20 @@
 - `primary_category_toys`
 - `primary_category_watches_gifts`
 
-### Target encoded (2 features)
+### Target encoded (3 features)
 
 - `ip_region_te`
 - `campaign_name_te`
+- `seller_state_te`
 
-### Derived (11 features)
+### Derived (12 features)
 
 - `customer_order_count`
 - `cart_conversion`
 - `engagement_rate`
 - `search_intensity`
 - `items_per_minute`
+- `loyalty_numeric`
 - `income_x_loyalty`
 - `log_income`
 - `purchase_hour`
@@ -192,7 +214,7 @@
 ## Excluded Features
 
 - `avg_item_price` — r=0.92 with target (leakage: mechanically derived from order contents)
-- `order_value` / `order_value_winsorized` — target variable
+- `order_value` — target variable
 - `freight_value` — component of target
 - Post-purchase timestamps — not available at prediction time
 

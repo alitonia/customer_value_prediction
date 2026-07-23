@@ -41,12 +41,15 @@ MODELS_DIR = PROJECT_ROOT / "models"
 sns.set_theme(style="whitegrid", font_scale=1.1)
 
 
-def load_data() -> tuple[pd.DataFrame, pd.Series]:
+def load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     X = pd.read_parquet(PROCESSED / "features.parquet")
     target = pd.read_parquet(PROCESSED / "target.parquet")
     y = target["target_log"]
+    # Load dates for time-based split
+    modeling = pd.read_parquet(PROCESSED / "modeling_dataset.parquet")
+    dates = modeling["order_purchase_timestamp"]
     log.info("Loaded %d rows × %d features", len(X), len(X.columns))
-    return X, y
+    return X, y, dates
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -86,14 +89,30 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     }
 
 
-def train_and_evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
-    """Train all models with CV and evaluate on test set (Tasks 5.1–5.4)."""
-    from sklearn.model_selection import train_test_split
+def train_and_evaluate(
+    X: pd.DataFrame, y: pd.Series, dates: pd.Series
+) -> dict:
+    """Train all models with CV and evaluate on test set (Tasks 5.1–5.4).
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+    V2: Time-based train/test split (train < 2018-04-01, test >= 2018-04-01).
+    V2: XGBoost uses Huber loss for robustness to outliers.
+    """
+    # --- Time-based split ---
+    split_date = pd.Timestamp("2018-04-01")
+    train_mask = dates < split_date
+    test_mask = dates >= split_date
+    X_train, X_test = X[train_mask], X[test_mask]
+    y_train, y_test = y[train_mask], y[test_mask]
+    log.info(
+        "Time-based split at %s: Train=%d (%s to %s), Test=%d (%s to %s)",
+        split_date.date(),
+        len(X_train),
+        dates[train_mask].min().date(),
+        dates[train_mask].max().date(),
+        len(X_test),
+        dates[test_mask].min().date(),
+        dates[test_mask].max().date(),
     )
-    log.info("Train: %d, Test: %d", len(X_train), len(X_test))
 
     # --- Task 5.1: Cross-validation setup ---
     cv = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -125,6 +144,7 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
             random_state=42,
             n_jobs=-1,
             verbosity=0,
+            objective="reg:absoluteerror",
         )
     except ImportError:
         log.warning("XGBoost not available")
@@ -141,6 +161,7 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
             random_state=42,
             n_jobs=-1,
             verbose=-1,
+            objective="mae",
         )
     except ImportError:
         log.warning("LightGBM not available")
@@ -316,8 +337,8 @@ def main():
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     plots_dir = PROCESSED
 
-    X, y = load_data()
-    results, X_train, X_test, y_train, y_test = train_and_evaluate(X, y)
+    X, y, dates = load_data()
+    results, X_train, X_test, y_train, y_test = train_and_evaluate(X, y, dates)
 
     # Select best model by R²
     best_name = max(results, key=lambda n: results[n]["metrics"]["R2_log"])

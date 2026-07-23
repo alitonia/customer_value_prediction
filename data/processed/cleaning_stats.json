@@ -13,44 +13,14 @@
       "detail": ""
     },
     {
-      "step": "3.1c Fill missing order timestamps",
-      "before": 4908,
-      "after": 4748,
-      "detail": "approved_at \u2190 purchase_timestamp"
-    },
-    {
-      "step": "3.1d Fill missing product categories",
-      "before": 610,
-      "after": 0,
-      "detail": ""
-    },
-    {
-      "step": "3.2 Translate categories to English",
-      "before": 0,
-      "after": "32328",
-      "detail": "71 categories mapped"
-    },
-    {
       "step": "3.3a Filter to delivered/shipped",
       "before": 99441,
       "after": 97585,
-      "detail": "removed 1856 canceled/unavailable/other"
+      "detail": "removed 1856"
     },
     {
-      "step": "3.3b Remove zero/negative value orders",
-      "before": 98666,
-      "after": 98666,
-      "detail": ""
-    },
-    {
-      "step": "3.3c Winsorize order value",
-      "before": 3943,
-      "after": 0,
-      "detail": "fence=R$522, capped 3943 orders"
-    },
-    {
-      "step": "3.3d Join with valid orders",
-      "before": 97585,
+      "step": "3.3b Order value (no winsorization)",
+      "before": 99441,
       "after": 97584,
       "detail": ""
     },
@@ -58,12 +28,12 @@
       "step": "3.5 Final modeling dataset",
       "before": 99441,
       "after": 97584,
-      "detail": "50 columns"
+      "detail": "71 columns"
     }
   ],
   "final_rows": 97584,
-  "final_cols": 50,
+  "final_cols": 71,
   "initial_rows": 99441,
   "retention_pct": 98.13256101607989,
-  "upper_fence": 521.5400000000001
+  "winsorization": "none (raw order value preserved)"
 }

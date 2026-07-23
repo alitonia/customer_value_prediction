@@ -44,7 +44,6 @@ EXCLUDE = {
     "session_start",
     "session_end",
     "order_value",
-    "order_value_winsorized",
     "freight_value",
     "product_category_name",  # keep only english version
     "customer_state",  # keep ip_region instead
@@ -71,7 +70,7 @@ ONEHOT_COLS = [
 ]
 
 # Categorical columns for target encoding (high cardinality)
-TARGET_ENCODE_COLS = ["ip_region", "campaign_name"]
+TARGET_ENCODE_COLS = ["ip_region", "campaign_name", "seller_state"]
 
 # Numerical columns to scale
 NUMERICAL_COLS = [
@@ -90,6 +89,30 @@ NUMERICAL_COLS = [
     "payment_installments",
     "review_score",
     "n_payments",
+    # V2: Geolocation
+    "geo_lat",
+    "geo_lng",
+    "customer_urban",
+    "cust_seller_distance_km",
+    "regional_price_index",
+    # V2: Seller
+    "seller_order_count",
+    "seller_avg_price",
+    "seller_item_count",
+    "seller_n_categories",
+    "seller_lat",
+    "seller_lng",
+    # V2: RFM temporal
+    "customer_age_days",
+    "recency_days",
+    "frequency",
+    "purchase_month",
+    "purchase_quarter",
+    "purchase_day_of_month",
+    # V2: Product aggregates
+    "cat_avg_price",
+    "cat_std_price",
+    "cat_order_count",
 ]
 
 # Boolean columns (pass through as 0/1)
@@ -105,7 +128,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     leakage_cols = [
         "avg_item_price",
         "order_value",
-        "order_value_winsorized",
         "freight_value",
     ]
     feat = feat.drop(
@@ -115,6 +137,22 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # RFM-like: order count per customer (proxy for frequency)
     cust_freq = df.groupby("customer_unique_id")["order_id"].transform("count")
     feat["customer_order_count"] = cust_freq
+
+    # V2: Distance × value interaction (longer distance → higher freight → higher value)
+    if "cust_seller_distance_km" in feat.columns and "item_count" in feat.columns:
+        feat["distance_per_item"] = feat["cust_seller_distance_km"] / feat["item_count"].clip(lower=1)
+
+    # V2: Seller reputation × loyalty interaction
+    if "seller_order_count" in feat.columns and "loyalty_numeric" in feat.columns:
+        feat["seller_rep_x_loyalty"] = feat["seller_order_count"] * feat["loyalty_numeric"]
+
+    # V2: Category price × income interaction
+    if "cat_avg_price" in feat.columns and "log_income" in feat.columns:
+        feat["cat_price_x_income"] = feat["cat_avg_price"] * feat["log_income"]
+
+    # V2: Urban × device interaction
+    if "customer_urban" in feat.columns:
+        feat["urban_x_desktop"] = feat["customer_urban"] * (feat["device_type"] == "desktop").astype(float)
 
     # Value per item — REMOVED: leaks target (uses order_value_winsorized)
     # feat["value_per_item"] = feat["order_value_winsorized"] / feat["item_count"].clip(lower=1)
@@ -163,6 +201,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         "purchase_dow",
         "is_weekend",
         "age",
+        # V2 derived
+        "distance_per_item",
+        "seller_rep_x_loyalty",
+        "cat_price_x_income",
+        "urban_x_desktop",
     ]
     log.info("  Created %d derived features", len(derived))
     return feat
@@ -226,6 +269,9 @@ def encode_and_scale(
         ]
         if c in feat.columns
     ]
+
+    # Replace inf with NaN before scaling
+    feat = feat.replace([np.inf, -np.inf], np.nan)
 
     scaler = StandardScaler()
     feat[num_present] = scaler.fit_transform(feat[num_present].fillna(0))
@@ -355,7 +401,7 @@ def write_feature_catalog(
             "## Excluded Features",
             "",
             "- `avg_item_price` — r=0.92 with target (leakage: mechanically derived from order contents)",
-            "- `order_value` / `order_value_winsorized` — target variable",
+            "- `order_value` — target variable",
             "- `freight_value` — component of target",
             "- Post-purchase timestamps — not available at prediction time",
             "",
@@ -380,10 +426,8 @@ def main():
     df = pd.read_parquet(args.input)
     log.info("  %d rows × %d cols", len(df), len(df.columns))
 
-    # Target: winsorized order value
-    target = df[["order_value_winsorized"]].rename(
-        columns={"order_value_winsorized": "target"}
-    )
+    # Target: raw order value (no winsorization)
+    target = df[["order_value"]].rename(columns={"order_value": "target"})
 
     # Task 4.3: Log-transform target
     log.info("=== Task 4.3: Log-transform target ===")
