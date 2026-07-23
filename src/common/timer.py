@@ -10,4 +10,5 @@ def timer(func):
         end = time.time()
         print(f"[{func.__name__}] took {end - start:.2f} seconds")
         return result
+
     return wrapper

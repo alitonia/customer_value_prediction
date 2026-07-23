@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import numpy as np
@@ -20,7 +18,6 @@ logger = setup_logger("feature_engineering")
 
 
 class FeatureEngineer(BaseEstimator, TransformerMixin):
-
     def __init__(self):
 
         self.merged_dir = config.paths.MERGED_DIR
@@ -30,10 +27,7 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         # Chỉ lưu danh sách để tham khảo, không encode ở đây
         self.categorical_columns = ["device_type", "referral_channel"]
 
-        self.encoder = OneHotEncoder(
-            handle_unknown="ignore",
-            sparse_output=False
-        )
+        self.encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 
         self.duration_threshold = None
         self.pages_threshold = None
@@ -69,25 +63,34 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
 
         # === Numerical + Interaction Features ===
         df["engagement_score"] = (
-            df["session_duration_seconds"] * 0.4 +
-            df["pages_viewed"] * 0.6
+            df["session_duration_seconds"] * 0.4 + df["pages_viewed"] * 0.6
         )
 
-        df["cart_efficiency"] = safe_divide(df["cart_additions"], df["session_duration_seconds"])
-        df["session_intensity"] = safe_divide(df["pages_viewed"], df["session_duration_seconds"])
+        df["cart_efficiency"] = safe_divide(
+            df["cart_additions"], df["session_duration_seconds"]
+        )
+        df["session_intensity"] = safe_divide(
+            df["pages_viewed"], df["session_duration_seconds"]
+        )
         df["add_to_cart_ratio"] = safe_divide(df["cart_additions"], df["pages_viewed"])
         df["pages_per_cart"] = safe_divide(df["pages_viewed"], df["cart_additions"])
-        df["duration_per_cart"] = safe_divide(df["session_duration_seconds"], df["cart_additions"])
-        df["discount_per_page"] = safe_divide(df["discount_amount_pct"], df["pages_viewed"])
+        df["duration_per_cart"] = safe_divide(
+            df["session_duration_seconds"], df["cart_additions"]
+        )
+        df["discount_per_page"] = safe_divide(
+            df["discount_amount_pct"], df["pages_viewed"]
+        )
 
         if "order_value" in df.columns:
-            df["estimated_discount_value"] = df["order_value"] * df["discount_amount_pct"] / 100
+            df["estimated_discount_value"] = (
+                df["order_value"] * df["discount_amount_pct"] / 100
+            )
         else:
             df["estimated_discount_value"] = 0
         df["has_high_discount"] = (df["discount_amount_pct"] >= 15).astype(int)
         df["is_high_value_session"] = (
-            (df["session_duration_seconds"] > self.duration_threshold) &
-            (df["pages_viewed"] > self.pages_threshold)
+            (df["session_duration_seconds"] > self.duration_threshold)
+            & (df["pages_viewed"] > self.pages_threshold)
         ).astype(int)
 
         # Interaction
@@ -101,13 +104,13 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         df["delivery_speed"] = pd.cut(
             df["delivery_days"],
             bins=[0, 3, 7, 14, np.inf],
-            labels=["fast", "normal", "slow", "very_slow"]
+            labels=["fast", "normal", "slow", "very_slow"],
         ).astype(str)
 
         df["discount_level"] = pd.cut(
             df["discount_amount_pct"],
             bins=[-1, 0, 5, 15, 100],
-            labels=["none", "low", "medium", "high"]
+            labels=["none", "low", "medium", "high"],
         ).astype(str)
 
         # KHÔNG drop và KHÔNG encode device_type, referral_channel ở đây

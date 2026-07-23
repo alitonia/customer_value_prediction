@@ -19,33 +19,49 @@ class FinalDatasetCreator:
         logger.info("Đang tạo final dataset...")
 
         orders = pd.read_csv(self.processed_dir / config.data.CLEANED_ORDERS)
-        sessions = pd.read_csv(self.processed_dir / config.data.CLEANED_BEHAVIORAL_SESSIONS)
-
-        df = sessions.merge(
-            orders[['order_id', 'order_value', 'payment_value', 'customer_city',
-                    'customer_state', 'order_status', 'delivery_days']],
-            on='order_id', how='left'
+        sessions = pd.read_csv(
+            self.processed_dir / config.data.CLEANED_BEHAVIORAL_SESSIONS
         )
 
-        df['order_value'] = df['order_value'].fillna(0)
-        df['payment_value'] = df['payment_value'].fillna(0)
-        df['delivery_days'] = df['delivery_days'].fillna(df['delivery_days'].median())
+        df = sessions.merge(
+            orders[
+                [
+                    "order_id",
+                    "order_value",
+                    "payment_value",
+                    "customer_city",
+                    "customer_state",
+                    "order_status",
+                    "delivery_days",
+                ]
+            ],
+            on="order_id",
+            how="left",
+        )
+
+        df["order_value"] = df["order_value"].fillna(0)
+        df["payment_value"] = df["payment_value"].fillna(0)
+        df["delivery_days"] = df["delivery_days"].fillna(df["delivery_days"].median())
 
         # Feature engineering
-        df['log_order_value'] = np.log1p(df['order_value'])
-        df['avg_time_per_page'] = np.where(df['pages_viewed'] > 0,
-                                           df['session_duration_seconds'] / df['pages_viewed'], 0)
-        df['cart_per_page'] = np.where(df['pages_viewed'] > 0,
-                                       df['cart_additions'] / df['pages_viewed'], 0)
+        df["log_order_value"] = np.log1p(df["order_value"])
+        df["avg_time_per_page"] = np.where(
+            df["pages_viewed"] > 0,
+            df["session_duration_seconds"] / df["pages_viewed"],
+            0,
+        )
+        df["cart_per_page"] = np.where(
+            df["pages_viewed"] > 0, df["cart_additions"] / df["pages_viewed"], 0
+        )
 
-        duration_median = df['session_duration_seconds'].median()
-        pages_median = df['pages_viewed'].median()
-        df['is_high_engagement'] = (
-            (df['session_duration_seconds'] > duration_median) &
-            (df['pages_viewed'] > pages_median)
+        duration_median = df["session_duration_seconds"].median()
+        pages_median = df["pages_viewed"].median()
+        df["is_high_engagement"] = (
+            (df["session_duration_seconds"] > duration_median)
+            & (df["pages_viewed"] > pages_median)
         ).astype(int)
 
-        df['has_coupon'] = df['coupon_applied'].astype(int)
+        df["has_coupon"] = df["coupon_applied"].astype(int)
 
         output_path = self.merged_dir / config.data.FINAL_DATASET
         df.to_csv(output_path, index=False)

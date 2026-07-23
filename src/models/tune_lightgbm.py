@@ -26,7 +26,10 @@ def objective(trial):
     for col in df.select_dtypes(include=["object"]).columns:
         df[col] = df[col].astype("category")
 
-    X = df.drop(columns=[config.training.TARGET, config.training.ORIGINAL_TARGET], errors="ignore")
+    X = df.drop(
+        columns=[config.training.TARGET, config.training.ORIGINAL_TARGET],
+        errors="ignore",
+    )
     y = df[config.training.TARGET]
 
     X_train, X_val, y_train, y_val = train_test_split(
@@ -77,6 +80,7 @@ def main():
 
     # Lưu best params
     import json
+
     with open("best_lightgbm_params.json", "w") as f:
         json.dump(trial.params, f, indent=4)
 

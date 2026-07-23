@@ -31,15 +31,14 @@ def main():
     for col in df.select_dtypes(include=["object"]).columns:
         df[col] = df[col].astype("category")
 
-    X = df.drop(columns=[config.training.TARGET, config.training.ORIGINAL_TARGET], errors="ignore")
+    X = df.drop(
+        columns=[config.training.TARGET, config.training.ORIGINAL_TARGET],
+        errors="ignore",
+    )
     y = df[config.training.TARGET]
 
     # Train model with best params
-    model = LGBMRegressor(
-        objective="regression",
-        random_state=42,
-        **best_params
-    )
+    model = LGBMRegressor(objective="regression", random_state=42, **best_params)
 
     model.fit(X, y)
 
