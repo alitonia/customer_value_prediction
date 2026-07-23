@@ -430,6 +430,16 @@ def generate_sessions(
     sessions["ip_country"] = rng.choice(IP_COUNTRY, size=n, p=IP_COUNTRY_W)
     sessions["ip_region"] = order_cust.map(cust_state).values
     sessions["is_logged_in"] = rng.random(n) < (0.70 + 0.15 * _sigmoid(vs))
+
+    # Coupon/discount: mildly negatively correlated with value
+    # (price-sensitive customers use coupons more; high-value customers less)
+    p_coupon = 0.35 - 0.10 * _sigmoid(vs * 0.5)
+    sessions["coupon_applied"] = rng.random(n) < p_coupon
+    discount = np.zeros(n)
+    has_coupon = sessions["coupon_applied"].values
+    discount[has_coupon] = rng.uniform(5, 25, size=has_coupon.sum()).round(1)
+    sessions["discount_amount_pct"] = discount
+
     sessions["created_at"] = sessions["session_start"]
     return sessions
 

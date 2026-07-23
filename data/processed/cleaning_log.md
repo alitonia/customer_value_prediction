@@ -21,4 +21,4 @@
 | 3.1b Remove duplicate order items | 112,650 | 112,650 |  |
 | 3.3a Filter to delivered/shipped | 99,441 | 97,585 | removed 1856 |
 | 3.3b Order value (no winsorization) | 99,441 | 97,584 |  |
-| 3.5 Final modeling dataset | 99,441 | 97,584 | 71 columns |
+| 3.5 Final modeling dataset | 99,441 | 97,584 | 73 columns |

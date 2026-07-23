@@ -44,6 +44,8 @@ Source: `src/data/generate_synthetic.py` (seed=42). Output: `data/synthetic/*.pa
 | ip_country | varchar | — | BR, US, AR, PT, other | Multinomial [0.93, 0.02, 0.02, 0.01, 0.02]. Independent. |
 | ip_region | varchar | — | 27 Brazilian state codes | Mapped from customer's `customer_state`. |
 | is_logged_in | boolean | — | True / False | `Bernoulli(0.70 + 0.15 * sigmoid(vs))`. Higher for high-value orders. |
+| coupon_applied | boolean | — | True / False | `Bernoulli(0.35 - 0.10 * sigmoid(0.5 * vs))`. Mildly negatively correlated with value (price-sensitive customers use coupons more). |
+| discount_amount_pct | decimal | % | 0 or [5.0, 25.0] | 0 if no coupon; else Uniform(5, 25). Applied discount percentage. |
 | created_at | timestamp | — | Same as session_start | Copy of session_start. |
 
 ## Table 3: session_activity (763,850 rows — ~8 events per session)

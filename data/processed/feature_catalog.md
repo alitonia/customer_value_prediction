@@ -1,11 +1,11 @@
 # Feature Catalog
 
-**Total features:** 180
+**Total features:** 182
 **Rows:** 97,584
 
 ## Feature Groups
 
-### Numerical (scaled) (43 features)
+### Numerical (scaled) (44 features)
 
 - `item_count`
 - `monthly_income`
@@ -39,6 +39,7 @@
 - `purchase_month`
 - `purchase_quarter`
 - `purchase_day_of_month`
+- `discount_amount_pct`
 - `customer_order_count`
 - `cart_conversion`
 - `engagement_rate`
@@ -51,10 +52,11 @@
 - `purchase_dow`
 - `age`
 
-### Boolean (2 features)
+### Boolean (3 features)
 
 - `is_logged_in`
 - `is_marketing_opt_in`
+- `coupon_applied`
 
 ### One-hot encoded (131 features)
 

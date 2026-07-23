@@ -113,10 +113,12 @@ NUMERICAL_COLS = [
     "cat_avg_price",
     "cat_std_price",
     "cat_order_count",
+    # V2: Coupon/discount
+    "discount_amount_pct",
 ]
 
 # Boolean columns (pass through as 0/1)
-BOOL_COLS = ["is_logged_in", "is_marketing_opt_in"]
+BOOL_COLS = ["is_logged_in", "is_marketing_opt_in", "coupon_applied"]
 
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
