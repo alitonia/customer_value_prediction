@@ -1,6 +1,5 @@
 """Tests for the FastAPI prediction API."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app

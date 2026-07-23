@@ -1,8 +1,5 @@
 """Tests for synthetic data generation and validation."""
 
-import numpy as np
-import pandas as pd
-
 
 class TestCustomerProfile:
     def test_row_count(self, synthetic_data):
@@ -59,11 +56,15 @@ class TestSessionActivity:
         assert counts.min() >= 5
 
     def test_every_session_has_checkout(self, synthetic_data):
-        types = synthetic_data["activity"].groupby("session_id")["activity_type"].apply(set)
+        types = (
+            synthetic_data["activity"].groupby("session_id")["activity_type"].apply(set)
+        )
         assert types.apply(lambda s: "checkout" in s).all()
 
     def test_every_session_has_add_to_cart(self, synthetic_data):
-        types = synthetic_data["activity"].groupby("session_id")["activity_type"].apply(set)
+        types = (
+            synthetic_data["activity"].groupby("session_id")["activity_type"].apply(set)
+        )
         assert types.apply(lambda s: "add_to_cart" in s).all()
 
     def test_cart_quantity_non_negative(self, synthetic_data):
@@ -80,7 +81,9 @@ class TestValueConditioning:
 
     def test_loyalty_monotonic_income(self, synthetic_data):
         """Higher loyalty tiers should have higher median income."""
-        med = synthetic_data["profile"].groupby("loyalty_tier")["monthly_income"].median()
+        med = (
+            synthetic_data["profile"].groupby("loyalty_tier")["monthly_income"].median()
+        )
         tiers = ["bronze", "silver", "gold", "platinum"]
         vals = [med.get(t, 0) for t in tiers]
         assert vals[-1] > vals[0]  # platinum > bronze

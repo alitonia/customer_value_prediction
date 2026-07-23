@@ -89,9 +89,7 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     }
 
 
-def train_and_evaluate(
-    X: pd.DataFrame, y: pd.Series, dates: pd.Series
-) -> dict:
+def train_and_evaluate(X: pd.DataFrame, y: pd.Series, dates: pd.Series) -> dict:
     """Train all models with CV and evaluate on test set (Tasks 5.1–5.4).
 
     V2: Time-based train/test split (train < 2018-04-01, test >= 2018-04-01).

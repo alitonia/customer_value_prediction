@@ -12,14 +12,22 @@ class TestFeatureMatrix:
 
     def test_no_target_leakage(self, features):
         """Target-derived columns must not be in features."""
-        leakage = ["order_value", "order_value_winsorized", "freight_value",
-                    "avg_item_price", "value_per_item", "value_per_minute"]
+        leakage = [
+            "order_value",
+            "order_value_winsorized",
+            "freight_value",
+            "avg_item_price",
+            "value_per_item",
+            "value_per_minute",
+        ]
         for col in leakage:
             assert col not in features.columns, f"Leakage column found: {col}"
 
     def test_no_nulls(self, features):
         null_counts = features.isnull().sum()
-        assert null_counts.sum() == 0, f"Nulls in: {null_counts[null_counts > 0].to_dict()}"
+        assert null_counts.sum() == 0, (
+            f"Nulls in: {null_counts[null_counts > 0].to_dict()}"
+        )
 
     def test_no_infinite_values(self, features):
         numeric = features.select_dtypes(include=[np.number])

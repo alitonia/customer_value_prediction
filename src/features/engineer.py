@@ -140,11 +140,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # V2: Distance × value interaction (longer distance → higher freight → higher value)
     if "cust_seller_distance_km" in feat.columns and "item_count" in feat.columns:
-        feat["distance_per_item"] = feat["cust_seller_distance_km"] / feat["item_count"].clip(lower=1)
+        feat["distance_per_item"] = feat["cust_seller_distance_km"] / feat[
+            "item_count"
+        ].clip(lower=1)
 
     # V2: Seller reputation × loyalty interaction
     if "seller_order_count" in feat.columns and "loyalty_numeric" in feat.columns:
-        feat["seller_rep_x_loyalty"] = feat["seller_order_count"] * feat["loyalty_numeric"]
+        feat["seller_rep_x_loyalty"] = (
+            feat["seller_order_count"] * feat["loyalty_numeric"]
+        )
 
     # V2: Category price × income interaction
     if "cat_avg_price" in feat.columns and "log_income" in feat.columns:
@@ -152,7 +156,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # V2: Urban × device interaction
     if "customer_urban" in feat.columns:
-        feat["urban_x_desktop"] = feat["customer_urban"] * (feat["device_type"] == "desktop").astype(float)
+        feat["urban_x_desktop"] = feat["customer_urban"] * (
+            feat["device_type"] == "desktop"
+        ).astype(float)
 
     # Value per item — REMOVED: leaks target (uses order_value_winsorized)
     # feat["value_per_item"] = feat["order_value_winsorized"] / feat["item_count"].clip(lower=1)
