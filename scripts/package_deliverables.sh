@@ -58,7 +58,7 @@ print('  ✓ $(basename "$pdf_file")')
 # Convert all narrative docs
 for md in docs/final_report.md docs/project_overview.md docs/marketing_recommendations.md \
           docs/data_dictionary.md docs/synthetic_data_schema.md docs/kpis_and_business_value.md \
-          docs/demo_walkthrough.md docs/HANDS_OFF_GUIDE.md; do
+          docs/demo_walkthrough.md; do
     if [ -f "$md" ]; then
         convert_md_to_pdf "$md" "$OUT/docs/$(basename "${md%.md}.pdf")"
     fi
