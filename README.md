@@ -1,131 +1,62 @@
-# Predicting Customer Order Value for an E-Commerce Platform
+# Customer Order Value Prediction
 
-**Course:** Business Intelligence  
-**University:** Hanoi University of Science and Technology (HUST)
+End-to-end regression system that predicts the monetary value of an e-commerce order before checkout, built on the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) enriched with synthetic behavioral session data.
 
----
+**Business question:** Given a customer's profile and current cart/session behavior, what is the expected value of this order, and which factors drive that value up or down?
 
-## 1. Introduction
+## Deliverables
 
-This project focuses on building a system to **predict customer order value** for an e-commerce platform. The project uses real data from the **Olist** dataset (Brazil) combined with synthetic behavioral session data generated according to the course requirements.
+| Deliverable | Location |
+|---|---|
+| Source code | This repository |
+| Data dictionary | `docs/synthetic_data_schema.md` |
+| KPI & business value spec | `docs/kpis_and_business_value.md` |
+| Deployed API + demo | `app/` (FastAPI + Streamlit) |
+| Monitoring dashboard | `monitoring/` (Evidently) |
+| Final report & slides | `docs/` (PDF + PPTX) |
 
-The main goal is to build a complete data pipeline and develop machine learning models capable of predicting order value effectively, evaluated using **WAPE** and **MedAPE** metrics as required by the course.
+## Repository Structure
 
----
+```
+data/
+├── raw/            # Olist CSVs (9 files, git-ignored)
+├── synthetic/      # Generated: customer_profile.csv, sessions.csv, session_activity.csv
+└── processed/      # Cleaned & merged data ready for modeling
+docs/               # KPIs, schema, data dictionary, project announcement PDF
+notebooks/          # EDA, cleaning, feature engineering, modeling notebooks
+src/
+├── data/           # Data loading & cleaning scripts
+├── features/       # Feature engineering scripts
+└── models/         # Model training & evaluation scripts
+app/
+├── api/            # FastAPI backend
+└── frontend/       # Streamlit demo
+monitoring/         # Evidently drift & performance dashboards
+plan/               # Project plan & team roles
+```
 
-## 2. Project Objectives
+## Tech Stack
 
-- Build a complete data engineering pipeline.
-- Generate synthetic behavioral session data.
-- Perform high-quality feature engineering.
-- Train and compare multiple models (LightGBM, XGBoost, CatBoost).
-- Optimize the LightGBM model using Optuna.
-- Evaluate models using the required metrics (WAPE, MedAPE, MAE).
+Python 3.10+, pandas, numpy, scikit-learn, XGBoost, LightGBM, FastAPI, Streamlit, Evidently AI, Faker, matplotlib, seaborn.
 
----
-
-## 3. Key Results
-
-| Model               | MAE   | WAPE    | MedAPE | Note            |
-|---------------------|-------|---------|--------|-----------------|
-| *LightGBM (Tuned)*  | *8.47*| *6.21%* | *3.95%*| *Best Model*    |
-| LightGBM (Base)     | 9.36  | 6.86%   | 4.44%  | -               |
-| CatBoost            | 9.65  | 7.07%   | 4.69%  | -               |
-| XGBoost             | 10.49 | 7.69%   | 4.42%  | -               |
-
-**Best Model:** `best_lightgbm_tuned.pkl`
-
----
-
-## 4. Project Structure
-customer_value_prediction/
-├── src/
-│   ├── config.py                      # Centralized configuration
-│   ├── common/                        # Shared utilities
-│   │   ├── logger.py
-│   │   ├── metrics.py
-│   │   ├── io.py
-│   │   └── timer.py
-│   ├── data/
-│   │   ├── data_generation.py         # Generate synthetic behavioral data
-│   │   ├── cleaning.py                # Clean Olist data
-│   │   └── create_final_dataset.py    # Create final merged dataset
-│   ├── features/
-│   │   └── feature_engineering.py     # Feature engineering
-│   └── models/
-│       ├── train.py                   # Train & compare models (50 runs)
-│       ├── tune_lightgbm.py           # Hyperparameter tuning with Optuna
-│       └── evaluate_final_model.py    # Model evaluation + Feature Importance
-├── data/
-│   ├── raw/                           # Original Olist data
-│   ├── synthetic/                     # Generated behavioral sessions
-│   ├── processed/                     # Cleaned data
-│   └── merged/                        # final_dataset.csv & modeling_dataset.csv
-├── models/
-│   └── saved_models/                  # Trained models (.pkl)
-├── reports/                           # Results, plots, and predictions
-├── docs/                              # Documentation (Data Dictionary, etc.)
-├── README.md
-└── requirements.txt
-text---
-
-## 5. Technologies Used
-
-- Python 3.10
-- Pandas, NumPy
-- Scikit-learn
-- LightGBM, XGBoost, CatBoost
-- Optuna (for hyperparameter tuning)
-- Matplotlib, Seaborn
-
----
-
-## 6. How to Run
-
-### Step 1: Install dependencies
+## Setup
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-Step 2: Run the data pipeline
-Bash# 1. Generate synthetic behavioral data
-python src/data/data_generation.py
+```
 
-# 2. Clean data
-python src/data/cleaning.py
+Download the Olist dataset into `data/raw/` (Kaggle CLI or manual download).
 
-# 3. Create final dataset + feature engineering
-python src/data/create_final_dataset.py
-python src/features/feature_engineering.py
-Step 3: Train and evaluate models
-Bash# Train and compare 3 models (50 runs)
-python src/models/train.py
+## Project Board
 
-# Hyperparameter tuning for LightGBM
-python src/models/tune_lightgbm.py
+Tracked at [GitHub Projects #5](https://github.com/users/alitonia/projects/5).
 
-# Train final model with best parameters
-python src/models/train_final_lightgbm.py
+## KPI Targets
 
-# Evaluate model and generate Feature Importance
-python src/models/evaluate_final_model.py
+- MAE < R$25
+- WAPE < 16%
+- MedAPE < 12%
 
-7. Important Outputs
-After running the pipeline, the following key files will be generated:
-
-FileDescriptionbest_lightgbm_tuned.pkl
-Final best modeltest_predictions.csvActual vs Predicted values on test setfeature_importance.csvFeature importance rankingfeature_importance.pngTop features visualizationtraining_summary_50_runs.csvModel comparison results (50 runs)
-
-MemberMain ResponsibilitiesMember 1Data Engineering + Feature EngineeringMember 2Modeling + Hyperparameter TuningMember 3Report + Presentation
-
-9. Limitations & Future Work
-
-Time-based splitting was not used (due to limited timestamp information).
-No deployment or API was implemented.
-Potential improvement: Add customer historical features.
-
-
-10. References
-
-Olist Brazilian E-Commerce Dataset
-Optuna Documentation
-LightGBM Documentation
+See `docs/kpis_and_business_value.md` for full specification.

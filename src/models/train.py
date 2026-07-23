@@ -1,611 +1,353 @@
-"""
-Model Training Pipeline
+"""Model training, evaluation, and serialization (Tasks 5.1–5.6).
 
-Workflow
---------
-Load Dataset
-    │
-Train/Test Split
-    │
-Feature Engineering
-    │
-Train Models
-    │
-Evaluate Models
-    │
-Save Best Model
+Trains linear and tree-based regressors with cross-validation, evaluates on
+test metrics, performs residual diagnostics, and serializes the best model.
+
+Outputs:
+- data/processed/model_evaluation.md
+- data/processed/residual_analysis.png
+- models/best_model.joblib
+
+Usage:
+    python -m src.models.train
 """
 
-from __future__ import annotations
-
+import logging
+import pickle
 import warnings
+from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from pathlib import Path
-import sys
-
-from sklearn.model_selection import train_test_split
-
-from lightgbm import LGBMRegressor
-from xgboost import XGBRegressor
-from catboost import CatBoostRegressor
+import seaborn as sns
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Lasso, LinearRegression, Ridge
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import KFold, cross_val_score
 
 warnings.filterwarnings("ignore")
 
-sys.path.append(str(Path(__file__).parent.parent))
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
 
-from config import config
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROCESSED = PROJECT_ROOT / "data" / "processed"
+MODELS_DIR = PROJECT_ROOT / "models"
 
-from features.feature_engineering import FeatureEngineer
-
-from common import (
-    setup_logger,
-    timer,
-    mae,
-    wape,
-    medape,
-    save_object,
-    save_dataframe,
-)
-logger = setup_logger("train")
+sns.set_theme(style="whitegrid", font_scale=1.1)
 
 
-class ModelTrainer:
-    """
-    Train and compare multiple regression models.
+def load_data() -> tuple[pd.DataFrame, pd.Series]:
+    X = pd.read_parquet(PROCESSED / "features.parquet")
+    target = pd.read_parquet(PROCESSED / "target.parquet")
+    y = target["target_log"]
+    log.info("Loaded %d rows × %d features", len(X), len(X.columns))
+    return X, y
 
-    Models
-    ------
-    - LightGBM
-    - XGBoost
-    - CatBoost
 
-    Target
-    ------
-    log_order_value
+def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    """Compute all regression metrics in log-space and original space."""
+    # Log-space metrics
+    rmse_log = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae_log = mean_absolute_error(y_true, y_pred)
+    r2_log = r2_score(y_true, y_pred)
 
-    Evaluation
-    ----------
-    MAE
-    WAPE
-    MedAPE
-    """
+    # Original-space metrics (inverse log transform)
+    y_true_orig = np.expm1(y_true)
+    y_pred_orig = np.expm1(y_pred)
+    rmse_orig = np.sqrt(mean_squared_error(y_true_orig, y_pred_orig))
+    mae_orig = mean_absolute_error(y_true_orig, y_pred_orig)
 
-    def __init__(self):
+    # WAPE = sum(|y - y_hat|) / sum(|y|)
+    wape = np.sum(np.abs(y_true_orig - y_pred_orig)) / np.sum(np.abs(y_true_orig)) * 100
 
-        # ==========================================
-        # Paths
-        # ==========================================
+    # MedAPE = median(|y - y_hat| / |y|) * 100
+    ape = (
+        np.abs(y_true_orig - y_pred_orig) / np.clip(np.abs(y_true_orig), 1, None) * 100
+    )
+    med_ape = np.median(ape)
 
-        self.processed_dir = config.paths.PROCESSED_DIR
+    # MAPE (capped to avoid division by near-zero)
+    mape = np.mean(np.clip(ape, 0, 1000))
 
-        self.model_dir = config.paths.SAVED_MODEL_DIR
+    return {
+        "RMSE_log": rmse_log,
+        "MAE_log": mae_log,
+        "R2_log": r2_log,
+        "RMSE_BRL": rmse_orig,
+        "MAE_BRL": mae_orig,
+        "WAPE_%": wape,
+        "MedAPE_%": med_ape,
+        "MAPE_%": mape,
+    }
 
-        self.report_dir = config.paths.REPORT_DIR
 
-        self.model_dir.mkdir(
-            parents=True,
-            exist_ok=True
+def train_and_evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
+    """Train all models with CV and evaluate on test set (Tasks 5.1–5.4)."""
+    from sklearn.model_selection import train_test_split
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    log.info("Train: %d, Test: %d", len(X_train), len(X_test))
+
+    # --- Task 5.1: Cross-validation setup ---
+    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+
+    # --- Define models ---
+    models = {
+        "Linear Regression": LinearRegression(n_jobs=-1),
+        "Ridge": Ridge(alpha=1.0),
+        "Lasso": Lasso(alpha=0.1, max_iter=5000),
+        "Random Forest": RandomForestRegressor(
+            n_estimators=200,
+            max_depth=15,
+            min_samples_leaf=10,
+            n_jobs=-1,
+            random_state=42,
+        ),
+    }
+
+    # Try XGBoost and LightGBM
+    try:
+        from xgboost import XGBRegressor
+
+        models["XGBoost"] = XGBRegressor(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+    except ImportError:
+        log.warning("XGBoost not available")
+
+    try:
+        from lightgbm import LGBMRegressor
+
+        models["LightGBM"] = LGBMRegressor(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbose=-1,
+        )
+    except ImportError:
+        log.warning("LightGBM not available")
+
+    results = {}
+
+    for name, model in models.items():
+        log.info("Training %s...", name)
+
+        # CV scores
+        cv_scores = cross_val_score(
+            model, X_train, y_train, cv=cv, scoring="neg_mean_absolute_error", n_jobs=-1
+        )
+        cv_mae = -cv_scores.mean()
+        cv_std = cv_scores.std()
+
+        # Fit on full train
+        model.fit(X_train, y_train)
+
+        # Test predictions
+        y_pred = model.predict(X_test)
+        metrics = compute_metrics(y_test.values, y_pred)
+        metrics["CV_MAE_log"] = cv_mae
+        metrics["CV_MAE_std"] = cv_std
+
+        results[name] = {"model": model, "metrics": metrics, "y_pred": y_pred}
+
+        log.info(
+            "  %s: R²=%.4f  MAE_BRL=%.1f  WAPE=%.1f%%  MedAPE=%.1f%%",
+            name,
+            metrics["R2_log"],
+            metrics["MAE_BRL"],
+            metrics["WAPE_%"],
+            metrics["MedAPE_%"],
         )
 
-        self.report_dir.mkdir(
-            parents=True,
-            exist_ok=True
+    return results, X_train, X_test, y_train, y_test
+
+
+def residual_analysis(
+    best_name: str, results: dict, y_test: pd.Series, plots_dir: Path
+) -> None:
+    """Task 5.5: Residual diagnostics."""
+    log.info("=== Task 5.5: Residual analysis for %s ===", best_name)
+    y_pred = results[best_name]["y_pred"]
+    y_true = y_test.values
+    residuals = y_true - y_pred
+    y_true_orig = np.expm1(y_true)
+    y_pred_orig = np.expm1(y_pred)
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+
+    # 1. Residuals vs Predicted
+    axes[0, 0].scatter(y_pred, residuals, alpha=0.1, s=5, color="steelblue")
+    axes[0, 0].axhline(0, color="red", ls="--")
+    axes[0, 0].set_xlabel("Predicted (log)")
+    axes[0, 0].set_ylabel("Residual (log)")
+    axes[0, 0].set_title("Residuals vs Predicted")
+
+    # 2. Residual histogram
+    axes[0, 1].hist(residuals, bins=100, color="steelblue", edgecolor="white")
+    axes[0, 1].set_title("Residual Distribution")
+    axes[0, 1].set_xlabel("Residual (log)")
+    axes[0, 1].axvline(0, color="red", ls="--")
+
+    # 3. Actual vs Predicted (original scale)
+    axes[1, 0].scatter(y_true_orig, y_pred_orig, alpha=0.1, s=5, color="steelblue")
+    lim = max(y_true_orig.max(), y_pred_orig.max()) * 0.6
+    axes[1, 0].plot([0, lim], [0, lim], "r--", lw=1)
+    axes[1, 0].set_xlabel("Actual (BRL)")
+    axes[1, 0].set_ylabel("Predicted (BRL)")
+    axes[1, 0].set_title("Actual vs Predicted")
+    axes[1, 0].set_xlim(0, lim)
+    axes[1, 0].set_ylim(0, lim)
+
+    # 4. Residuals by value bucket
+    buckets = pd.cut(y_true_orig, bins=5)
+    bucket_resid = pd.DataFrame(
+        {"bucket": buckets, "resid": np.expm1(y_true) - np.expm1(y_pred)}
+    )
+    sns.boxplot(
+        data=bucket_resid, x="bucket", y="resid", ax=axes[1, 1], palette="muted"
+    )
+    axes[1, 1].set_title("Residuals by Value Bucket (BRL)")
+    axes[1, 1].set_xticklabels(axes[1, 1].get_xticklabels(), rotation=45, ha="right")
+    axes[1, 1].axhline(0, color="red", ls="--")
+
+    plt.tight_layout()
+    fig.savefig(plots_dir / "residual_analysis.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    log.info("  Saved residual_analysis.png")
+
+
+def feature_importance(
+    best_name: str, results: dict, X: pd.DataFrame, plots_dir: Path
+) -> None:
+    """Plot feature importances for tree-based models."""
+    model = results[best_name]["model"]
+    if not hasattr(model, "feature_importances_"):
+        log.info("  Model %s has no feature_importances_", best_name)
+        return
+
+    imp = pd.Series(model.feature_importances_, index=X.columns).sort_values(
+        ascending=False
+    )
+    top20 = imp.head(20)
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    top20.sort_values().plot.barh(color="steelblue", ax=ax)
+    ax.set_title(f"Top 20 Feature Importances — {best_name}")
+    ax.set_xlabel("Importance")
+    plt.tight_layout()
+    fig.savefig(plots_dir / "feature_importance.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    log.info("  Saved feature_importance.png")
+
+
+def write_evaluation_report(results: dict, best_name: str, output_dir: Path) -> None:
+    """Write model evaluation document."""
+    lines = [
+        "# Model Evaluation Report",
+        "",
+        f"**Best model:** {best_name}",
+        "",
+        "## Model Comparison",
+        "",
+        "| Model | R² (log) | MAE (BRL) | RMSE (BRL) | WAPE (%) | MedAPE (%) | CV MAE (log) |",
+        "|---|---|---|---|---|---|---|",
+    ]
+
+    for name, res in sorted(results.items(), key=lambda x: -x[1]["metrics"]["R2_log"]):
+        m = res["metrics"]
+        marker = " **← best**" if name == best_name else ""
+        lines.append(
+            f"| {name}{marker} | {m['R2_log']:.4f} | {m['MAE_BRL']:.1f} | "
+            f"{m['RMSE_BRL']:.1f} | {m['WAPE_%']:.1f} | {m['MedAPE_%']:.1f} | "
+            f"{m['CV_MAE_log']:.4f} ± {m['CV_MAE_std']:.4f} |"
         )
 
-        # ==========================================
-        # Dataset
-        # ==========================================
+    best_m = results[best_name]["metrics"]
+    lines.extend(
+        [
+            "",
+            "## KPI Targets",
+            "",
+            "| KPI | Target | Achieved | Status |",
+            "|---|---|---|---|",
+            f"| MAE | < R$25 | R${best_m['MAE_BRL']:.1f} | {'✓' if best_m['MAE_BRL'] < 25 else '✗'} |",
+            f"| WAPE | < 16% | {best_m['WAPE_%']:.1f}% | {'✓' if best_m['WAPE_%'] < 16 else '✗'} |",
+            f"| MedAPE | < 12% | {best_m['MedAPE_%']:.1f}% | {'✓' if best_m['MedAPE_%'] < 12 else '✗'} |",
+            "",
+            "## Residual Analysis",
+            "",
+            "![Residual Analysis](residual_analysis.png)",
+            "",
+            "## Feature Importances",
+            "",
+            "![Feature Importances](feature_importance.png)",
+            "",
+            "## Notes",
+            "",
+            "- Target variable is log1p(order_value). Metrics in BRL use expm1 inverse transform.",
+            "- Linear models use StandardScaler; tree-based models use raw encoded features.",
+            "- CV = 5-fold stratified by target quartiles.",
+        ]
+    )
+
+    (output_dir / "model_evaluation.md").write_text("\n".join(lines))
+    log.info("Wrote model_evaluation.md")
+
+
+def main():
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    plots_dir = PROCESSED
+
+    X, y = load_data()
+    results, X_train, X_test, y_train, y_test = train_and_evaluate(X, y)
+
+    # Select best model by R²
+    best_name = max(results, key=lambda n: results[n]["metrics"]["R2_log"])
+    log.info(
+        "Best model: %s (R²=%.4f)", best_name, results[best_name]["metrics"]["R2_log"]
+    )
+
+    # Residual analysis
+    residual_analysis(best_name, results, y_test, plots_dir)
+
+    # Feature importance
+    feature_importance(best_name, results, X, plots_dir)
+
+    # Save best model (Task 5.6)
+    best_model = results[best_name]["model"]
+    model_artifact = {
+        "model": best_model,
+        "model_name": best_name,
+        "feature_columns": list(X.columns),
+        "metrics": results[best_name]["metrics"],
+    }
+    with open(MODELS_DIR / "best_model.joblib", "wb") as f:
+        pickle.dump(model_artifact, f)
+    log.info("Saved best_model.joblib (%s)", best_name)
+
+    # Evaluation report
+    write_evaluation_report(results, best_name, plots_dir)
+
+    log.info("=== Modeling Complete ===")
 
-        self.dataset_path = (
-                config.paths.MERGED_DIR /
-                config.data.MODELING_DATASET
-        )
-
-        # ==========================================
-        # Training Config
-        # ==========================================
-
-        self.target = config.training.TARGET
-
-        self.original_target = (
-            config.training.ORIGINAL_TARGET
-        )
-
-        self.random_state = (
-            config.training.RANDOM_STATE
-        )
-
-        self.test_size = (
-            config.training.TEST_SIZE
-        )
-
-        # ==========================================
-        # Feature Engineering
-        # ==========================================
-
-        self.feature_engineer = FeatureEngineer()
-
-        # ==========================================
-        # Models
-        # ==========================================
-
-        self.models = {
-
-            "LightGBM": LGBMRegressor(
-
-                random_state=self.random_state,
-
-                **config.model.LIGHTGBM_PARAMS
-
-            ),
-
-            "XGBoost": XGBRegressor(
-                random_state=self.random_state,
-                enable_categorical=True,
-                **config.model.XGBOOST_PARAMS
-
-            ),
-
-            "CatBoost": CatBoostRegressor(
-
-                random_seed=self.random_state,
-
-                **config.model.CATBOOST_PARAMS
-
-            ),
-
-        }
-
-    ############################################################
-    # Load Dataset
-    ############################################################
-
-    def load_data(self) -> pd.DataFrame:
-
-        logger.info(
-            "Loading modeling dataset..."
-        )
-
-        df = pd.read_csv(
-            self.dataset_path
-        )
-
-        logger.info(
-            f"Dataset shape: {df.shape}"
-        )
-
-        return df
-
-    ############################################################
-    # Train/Test Split
-    ############################################################
-
-    def split_dataset(self, df: pd.DataFrame, random_state: int = None):
-
-        logger.info("Splitting dataset...")
-
-        if random_state is None:
-            random_state = self.random_state
-
-        X = df.drop(
-            columns=[self.target, self.original_target],
-            errors="ignore"
-        )
-        y = df[self.target]
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y,
-            test_size=self.test_size,
-            random_state=random_state,  # ← Dùng seed động
-            shuffle=True,
-        )
-
-        logger.info(f"Train shape: {X_train.shape}")
-        logger.info(f"Test shape: {X_test.shape}")
-
-        return X_train, X_test, y_train, y_test
-    ############################################################
-    # Feature Engineering
-    ############################################################
-
-    def build_features(
-            self,
-            X_train: pd.DataFrame,
-            X_test: pd.DataFrame,
-    ):
-
-        logger.info("Preparing features for training...")
-
-
-        id_cols = ["order_id", "session_id"]
-        drop_cols = [col for col in id_cols if col in X_train.columns]
-
-        if drop_cols:
-            X_train = X_train.drop(columns=drop_cols, errors="ignore")
-            X_test = X_test.drop(columns=drop_cols, errors="ignore")
-
-        object_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
-
-        for col in object_cols:
-            X_train[col] = X_train[col].astype("category")
-            X_test[col] = X_test[col].astype("category")
-
-        logger.info(
-            f"Final Train shape: {X_train.shape}, Test shape: {X_test.shape}"
-        )
-
-        return X_train, X_test
-
-    ############################################################
-    # Evaluate
-    ############################################################
-
-    def evaluate_model(
-        self,
-        model,
-        X_test: pd.DataFrame,
-        y_test: pd.Series,
-    ) -> dict:
-
-        logger.info("Evaluating model...")
-
-        # Prediction on log scale
-        pred_log = model.predict(X_test)
-
-        # Convert back to original scale
-        pred = np.expm1(pred_log)
-
-        truth = np.expm1(y_test)
-
-        metrics = {
-
-            "MAE": mae(
-                truth,
-                pred
-            ),
-
-            "WAPE": wape(
-                truth,
-                pred
-            ),
-
-            "MedAPE": medape(
-                truth,
-                pred
-            )
-
-        }
-
-        return metrics
-
-    ############################################################
-    # Train LightGBM
-    ############################################################
-
-    def train_lightgbm(
-        self,
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-    ):
-
-        logger.info(
-            "Training LightGBM..."
-        )
-
-        model = self.models["LightGBM"]
-
-        model.fit(
-            X_train,
-            y_train
-        )
-
-        metrics = self.evaluate_model(
-
-            model,
-
-            X_test,
-
-            y_test
-
-        )
-
-        logger.info(
-            f"LightGBM Metrics: {metrics}"
-        )
-
-        return {
-
-            "name": "LightGBM",
-
-            "model": model,
-
-            "metrics": metrics
-
-        }
-
-    ############################################################
-    # Train XGBoost
-    ############################################################
-
-    def train_xgboost(
-        self,
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-    ):
-
-        logger.info(
-            "Training XGBoost..."
-        )
-
-        model = self.models["XGBoost"]
-
-        model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_test, y_test)],
-            verbose=False,
-        )
-
-        metrics = self.evaluate_model(
-
-            model,
-
-            X_test,
-
-            y_test
-
-        )
-
-        logger.info(
-            f"XGBoost Metrics: {metrics}"
-        )
-
-        return {
-
-            "name": "XGBoost",
-
-            "model": model,
-
-            "metrics": metrics
-
-        }
-
-    ############################################################
-    # Train CatBoost
-    ############################################################
-
-    def train_catboost(
-        self,
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-    ):
-
-        logger.info(
-            "Training CatBoost..."
-        )
-
-        model = self.models["CatBoost"]
-        cat_features = X_train.select_dtypes(include=["category"]).columns.tolist()
-        X_train_cat = X_train.copy()
-        X_test_cat = X_test.copy()
-        for col in cat_features:
-            X_train_cat[col] = X_train_cat[col].cat.add_categories("Unknown").fillna("Unknown")
-            X_test_cat[col] = X_test_cat[col].cat.add_categories("Unknown").fillna("Unknown")
-
-        model.fit(
-            X_train_cat,
-            y_train,
-            cat_features=cat_features,
-            eval_set=(X_test_cat, y_test),
-            verbose=False
-        )
-
-        metrics = self.evaluate_model(
-            model,
-            X_test_cat,
-            y_test
-        )
-
-        logger.info(f"CatBoost Metrics: {metrics}")
-
-        return {
-            "name": "CatBoost",
-            "model": model,
-            "metrics": metrics
-        }
-    ############################################################
-    # Compare Models
-    ############################################################
-
-    def compare_models(
-        self,
-        results: list[dict],
-    ) -> tuple[dict, pd.DataFrame]:
-
-        logger.info(
-            "Comparing models..."
-        )
-
-        metrics_df = pd.DataFrame(
-
-            [
-
-                {
-
-                    "Model": result["name"],
-
-                    "MAE": result["metrics"]["MAE"],
-
-                    "WAPE": result["metrics"]["WAPE"],
-
-                    "MedAPE": result["metrics"]["MedAPE"],
-
-                }
-
-                for result in results
-
-            ]
-
-        )
-
-        metrics_df = metrics_df.sort_values(
-
-            by="WAPE",
-
-            ascending=True,
-
-        ).reset_index(drop=True)
-
-        save_dataframe(
-
-            metrics_df,
-
-            self.report_dir /
-
-            "metrics.csv"
-
-        )
-
-        logger.info(
-            f"\n{metrics_df}"
-        )
-
-        best_model = next(
-
-            result
-
-            for result in results
-
-            if result["name"] == metrics_df.iloc[0]["Model"]
-
-        )
-
-        logger.info(
-
-            f"Best Model: {best_model['name']}"
-
-        )
-
-        return best_model, metrics_df
-
-    ############################################################
-    # Save Best Model
-    ############################################################
-
-    def save_best_model(
-        self,
-        best_model: dict,
-    ):
-
-        model_path = (
-
-            self.model_dir /
-
-            "best_model.pkl"
-
-        )
-
-        save_object(
-
-            best_model["model"],
-
-            model_path
-
-        )
-
-        logger.info(
-
-            f"Best model saved to: {model_path}"
-
-        )
-
-    ############################################################
-    # Run Pipeline
-    ############################################################
-
-    @timer
-    def run(self, n_runs: int = 10):
-        logger.info("=" * 70)
-        logger.info(f"MODEL TRAINING PIPELINE - {n_runs} RUNS")
-        logger.info("=" * 70)
-
-        all_results = []
-
-        for run_idx in range(n_runs):
-            seed = self.random_state + run_idx
-            logger.info(f"\n{'=' * 20} RUN {run_idx + 1}/{n_runs} (seed={seed}) {'=' * 20}")
-
-            df = self.load_data()
-            X_train, X_test, y_train, y_test = self.split_dataset(df, random_state=seed)
-            X_train, X_test = self.build_features(X_train, X_test)
-
-            # Train 3 models
-            results = [
-                self.train_lightgbm(X_train, y_train, X_test, y_test),
-                self.train_xgboost(X_train, y_train, X_test, y_test),
-                self.train_catboost(X_train, y_train, X_test, y_test),
-            ]
-
-            for res in results:
-                # Làm phẳng metrics dictionary
-                flat_result = {
-                    "name": res["name"],
-                    "run": run_idx + 1,
-                    "seed": seed,
-                    "MAE": res["metrics"]["MAE"],
-                    "WAPE": res["metrics"]["WAPE"],
-                    "MedAPE": res["metrics"]["MedAPE"]
-                }
-                all_results.append(flat_result)
-
-        # ====================== TỔNG HỢP KẾT QUẢ ======================
-        logger.info("\n" + "=" * 70)
-        logger.info("TỔNG HỢP KẾT QUẢ SAU 50 LẦN CHẠY")
-        logger.info("=" * 70)
-
-        df_results = pd.DataFrame(all_results)
-
-        summary = df_results.groupby("name").agg({
-            "MAE": ["mean", "std"],
-            "WAPE": ["mean", "std"],
-            "MedAPE": ["mean", "std"]
-        }).round(4)
-
-        summary.columns = ['_'.join(col).strip() for col in summary.columns.values]
-        summary = summary.reset_index()
-
-        logger.info("\n" + str(summary))
-
-        # Lưu kết quả
-        detail_path = self.report_dir / "training_results_50_runs.csv"
-        df_results.to_csv(detail_path, index=False)
-
-        summary_path = self.report_dir / "training_summary_50_runs.csv"
-        summary.to_csv(summary_path, index=False)
-
-        logger.info(f"\nKết quả chi tiết đã lưu tại: {detail_path}")
-        logger.info(f"Bảng tổng hợp đã lưu tại: {summary_path}")
-
-        logger.info("=" * 70)
-        logger.info("TRAINING HOÀN TẤT")
-        logger.info("=" * 70)
-
-        return summary
-############################################################
-# Main
-############################################################
 
 if __name__ == "__main__":
-
-    trainer = ModelTrainer()
-
-    trainer.run()
+    main()

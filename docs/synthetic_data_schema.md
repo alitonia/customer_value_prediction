@@ -1,57 +1,125 @@
-# Task 1.2: Synthetic Behavioral Data Schema Specification
+# Synthetic Data Schema (ERD-aligned)
 
-This document details the schema design, field constraints, and statistical correlations for the synthetic behavioral data extension of the Olist e-commerce dataset.
+Three synthetic tables extend the Olist OLTP schema. Red-boxed tables in the ERD.
 
----
+## Integration Strategy
 
-## 1. Core Integration Strategy
+- **customer_profile**: 1 row per unique `customer_unique_id` in Olist `customers`.
+- **sessions**: 1 row per Olist `order_id` (the checkout session that produced the order). `session_start` is drawn before `order_purchase_timestamp`.
+- **session_activity**: N rows per session (clickstream events). `add_to_cart_quantity` aggregated per session must be >= actual items purchased.
 
-Instead of simulating completely independent data, our synthetic behavior dataset will **enrich the existing Olist orders**. We map each transaction (`order_id`) 1-to-1 to a simulated web/app session that represents the checkout session of that purchase.
+Join path: `orders.customer_id` → `customer_profile.customer_id`; `orders` ↔ `sessions` via 1:1 mapping on order; `sessions.session_id` → `session_activity.session_id`.
 
-* **Key Identifier**: `order_id` (foreign key linking to Olist `olist_orders_dataset.csv`).
-* **Output Path**: `data/synthetic/behavioral_sessions.csv`
-
----
-
-## 2. Field Specifications and Generation Constraints
-
-Below is the schema for the synthetic behavioral variables:
-
-| Field Name | Data Type | Units | Valid Range / Categories | Target Distribution / Logic |
-| :--- | :--- | :--- | :--- | :--- |
-| **`order_id`** | String (Hex) | N/A | Match Olist `order_id` | Unique identifier (32-character hexadecimal). |
-| **`session_id`** | String (UUID) | N/A | 36-char standard UUID | Globally unique identifier for the web session. |
-| **`device_type`** | Categorical | N/A | `mobile`, `desktop`, `tablet` | Standard e-commerce ratios:<br>- Mobile: **65%**<br>- Desktop: **30%**<br>- Tablet: **5%** |
-| **`referral_channel`** | Categorical | N/A | `direct`, `search_organic`, `search_paid`, `social`, `email` | Channel traffic distribution:<br>- `search_organic`: **35%**<br>- `direct`: **25%**<br>- `search_paid`: **15%**<br>- `social`: **15%**<br>- `email`: **10%** |
-| **`session_duration_seconds`**| Integer | Seconds | $10 \le x \le 3600$ | Log-Normal distribution:<br>- Mean: **300 seconds (5 min)**<br>- Max capped: **3600 seconds (1 hour)** |
-| **`pages_viewed`** | Integer | Count | $1 \le x \le 100$ | Poisson/Log-Normal distribution, strongly correlated with `session_duration_seconds`. Average: **8 pages**. |
-| **`cart_additions`** | Integer | Count | $1 \le x \le 20$ | Correlated with `pages_viewed` and Olist actual order item count: $\ge \text{actual\_item\_count}$. |
-| **`coupon_applied`** | Boolean | N/A | `0` or `1` | Average coupon application rate: **22%**. |
-| **`discount_amount_pct`** | Integer | % | $0, 5, 10, 15, 20$ | Conditional on `coupon_applied == 1`:<br>- 5% discount: **40%** probability<br>- 10% discount: **35%** probability<br>- 15% discount: **15%** probability<br>- 20% discount: **10%** probability |
+Output: `data/synthetic/customer_profile.csv`, `sessions.csv`, `session_activity.csv`.
 
 ---
 
-## 3. Statistical Relations & Multi-Variable Constraints (Business Logic)
+## Table 1: customer_profile
 
-To ensure the synthetic data behaves like real e-commerce data (and provides predictive signal for modeling), we enforce the following mathematical relationships during generation:
+| Column | Type | NN | Generation Logic |
+|---|---|---|---|
+| customer_id | varchar | PK | FK → Olist `customers.customer_unique_id` |
+| gender | varchar | | `male` 50%, `female` 49%, `other` 1% |
+| birth_date | date | | Uniform 1950-01-01 to 2003-12-31 |
+| marital_status | varchar | | `single` 40%, `married` 35%, `divorced` 15%, `widowed` 10% |
+| occupation | varchar | | Weighted: `professional` 25%, `student` 15%, `self_employed` 15%, `retired` 10%, `unemployed` 10%, `homemaker` 10%, `other` 15% |
+| education_level | varchar | | `high_school` 30%, `bachelor` 35%, `master` 20%, `phd` 5%, `none` 10% |
+| monthly_income | decimal | | Log-normal, median ~R$3000, clipped [500, 50000] |
+| household_size | int | | Poisson(λ=3), clipped [1, 10] |
+| loyalty_tier | varchar | | `bronze` 50%, `silver` 30%, `gold` 15%, `platinum` 5% |
+| registration_channel | varchar | | `organic` 40%, `paid_ads` 25%, `referral` 15%, `social` 12%, `email` 8% |
+| is_marketing_opt_in | boolean | | True 60% |
+| preferred_device | varchar | | `mobile` 65%, `desktop` 30%, `tablet` 5% |
+| created_at | timestamp | | Random date 2016-01-01 to 2018-06-01 |
+| updated_at | timestamp | | `created_at` + random offset |
 
-### A. Session Duration & Pages Viewed
-More pages viewed must correspond to longer sessions. We model this using a baseline time-per-page constant ($T_{\text{page}}$) with added random noise ($\epsilon$):
-$$\text{Duration} = \max(10, \text{pages\_viewed} \times T_{\text{page}} + \epsilon) \quad \text{where } T_{\text{page}} \sim \mathcal{N}(35, 10)$$
+## Table 2: sessions
 
-### B. Cart Additions & Order Value
-To avoid contradictions:
-1. `cart_additions` must be greater than or equal to the actual number of items purchased in that order (`order_items`).
-2. High-value orders should correlate with a larger number of cart additions (representing shoppers browsing and building larger baskets).
+| Column | Type | NN | Generation Logic |
+|---|---|---|---|
+| session_id | varchar | PK | UUID4 |
+| customer_id | varchar | NN | FK → `customer_profile.customer_id` |
+| session_start | timestamp | NN | `order_purchase_timestamp` − Uniform(5min, 3hr) |
+| session_end | timestamp | | `session_start` + duration |
+| device_type | varchar | | From `customer_profile.preferred_device` ± 10% noise |
+| browser | varchar | | `chrome` 60%, `safari` 20%, `firefox` 10%, `edge` 7%, `other` 3% |
+| operating_system | varchar | | `android` 35%, `windows` 30%, `ios` 20%, `macos` 10%, `linux` 5% |
+| traffic_source | varchar | | `google` 40%, `direct` 25%, `facebook` 15%, `instagram` 10%, `email` 10% |
+| traffic_medium | varchar | | `organic` 35%, `cpc` 20%, `direct` 25%, `social` 12%, `email` 8% |
+| campaign_name | varchar | | Null if medium=direct/organic; else weighted campaign names |
+| landing_page | varchar | | `/` 40%, `/category/...` 30%, `/product/...` 20%, `/search` 10% |
+| ip_country | varchar | | `BR` 95%, `US` 2%, `other` 3% |
+| ip_region | varchar | | Brazilian state codes weighted by population (SP 22%, RJ 12%, MG 10%, ...) |
+| is_logged_in | boolean | | True 80% |
+| created_at | timestamp | | Same as `session_start` |
 
-### C. Coupon Impact
-If `coupon_applied` is true, the `discount_amount_pct` is drawn from a multinomial distribution of standard discount rates ($5\%, 10\%, 15\%, 20\%$). If false, `discount_amount_pct` is strictly $0$.
+## Table 3: session_activity
 
----
+| Column | Type | NN | Generation Logic |
+|---|---|---|---|
+| activity_id | varchar | PK | UUID4 |
+| session_id | varchar | NN | FK → `sessions.session_id` |
+| customer_id | varchar | | FK → `customer_profile.customer_id` |
+| activity_timestamp | timestamp | NN | Between `session_start` and `session_end`, ordered |
+| activity_type | varchar | | `page_view` 50%, `search` 15%, `product_view` 20%, `add_to_cart` 10%, `checkout` 5% |
+| page_url | varchar | | Derived from activity_type |
+| product_id | varchar | | Non-null for `product_view`/`add_to_cart`; FK → Olist `products.product_id` |
+| search_keyword | varchar | | Non-null for `search`; drawn from product category names |
+| duration_seconds | int | | `page_view`/`product_view`: LogNormal(μ=3.5, σ=0.8), clipped [1, 600]; else 0 |
+| scroll_percent | int | | `page_view`/`product_view`: Beta(2,3)*100; else 0 |
+| add_to_cart_quantity | int | | Non-zero only for `add_to_cart`: Poisson(λ=1.5), clipped [1, 5]; else 0 |
+| created_at | timestamp | | Same as `activity_timestamp` |
 
-## 4. Schema Verification Checkpoints (Task 1.5 Targets)
+## Business Logic Constraints
 
-During the data generation validation phase, we will check:
-* **Completeness**: Every non-canceled order in Olist must have a corresponding session record.
-* **Integrity**: Zero nulls in the output file.
-* **Consistency**: `cart_additions >= items_purchased` for all records.
+1. **Cart consistency**: Sum of `add_to_cart_quantity` per session >= actual item count in the linked Olist order.
+2. **Temporal ordering**: `session_start` < all `activity_timestamp` < `session_end` ≈ `order_purchase_timestamp`.
+3. **Activity sequence**: Each session must contain at least one `add_to_cart` and one `checkout` event.
+4. **Device consistency**: `sessions.device_type` matches `customer_profile.preferred_device` 90% of the time.
+5. **Income-tier correlation**: Higher `loyalty_tier` correlates with higher `monthly_income`.
+
+## 4. Causal Design: Value-Conditioned Generation
+
+Synthetic features are **conditioned on real order value** so the model can learn genuine predictive patterns. Without this, synthetic features would be pure noise.
+
+### Conditioning variable
+
+`vs = zscore(log1p(order_value))` — a z-scored log-transform of the real order total (price + freight). For customer_profile, the customer's **average** delivered order value is used.
+
+### Feature → value correlation design
+
+| Feature | Correlation type | Target r / effect | Rationale |
+|---|---|---|---|
+| monthly_income | Continuous shift | r ≈ 0.3–0.5 | Higher income → higher spending capacity |
+| loyalty_tier | Probability shift | 2–3× AOV spread | Loyal customers trust platform, spend more |
+| household_size | Poisson λ shift | r ≈ 0.1–0.2 | Larger households → bulk orders |
+| preferred_device | Probability tilt | Desktop +5–10% AOV | Desktop = deliberate shopping, larger carts |
+| session duration | Log-normal μ shift | r ≈ 0.1–0.2 | More deliberation → higher-value orders |
+| traffic_source | Probability shift | Email +50% vs Google | Email = loyal repeat; Google = acquisition |
+| is_logged_in | Bernoulli p shift | +10–15% for high-value | Logged-in = existing customer |
+| activity types | Probability shift | More product_view/add_to_cart for high-value | High-value = more engagement |
+| gender, education, occupation | Independent | r ≈ 0 | No realistic causal link to individual order value |
+
+### Leakage prevention
+
+Correlations are **moderate, not deterministic**. Residual noise (σ=0.5–0.7 on log-scale) ensures:
+- No single synthetic feature predicts order value with r > 0.5
+- Model R² from synthetic features alone ≈ 0.10–0.25
+- Combined with real features (category, item count, freight), total R² ≈ 0.50–0.70
+
+## 5. Sharing & Reproducibility
+
+- **Parquet files** (snappy compression) committed to git via `.gitignore` exception: `!data/synthetic/*.parquet`
+- **CSV files** generated locally but git-ignored (too large)
+- **Generator script** (`src/data/generate_synthetic.py`) with `--seed 42` produces identical output
+- Teammates can either `git pull` the parquet files or regenerate from the Olist raw data
+
+## Validation Checkpoints (Task 1.5)
+
+- Every non-canceled Olist order has exactly 1 session.
+- Every unique customer has exactly 1 customer_profile row.
+- Every session has >= 3 activity events.
+- Zero nulls in NN columns.
+- Cart consistency holds for 100% of sessions.
+- monthly_income ↔ avg_value correlation r ∈ [0.2, 0.6].
+- Loyalty tier median AOV is monotonically increasing (bronze < silver < gold < platinum).

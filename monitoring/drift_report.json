@@ -1,0 +1,30 @@
+{
+  "n_features_monitored": 159,
+  "n_drifted": 2,
+  "drift_threshold": 0.25,
+  "wape_threshold": 18.0,
+  "max_psi": 4.939852627401161,
+  "top_psi_features": {
+    "search_intensity": 4.939852627401161,
+    "n_events": 4.335407294974682,
+    "purchase_hour": 0.10011428565982933,
+    "registration_channel_paid_ads": 0.005832334112966182,
+    "operating_system_windows": 0.0055262691683152934,
+    "marital_status_married": 0.005275930319300859,
+    "payment_type_credit_card": 0.005202707854906679,
+    "operating_system_ios": 0.005143380389758802,
+    "traffic_source_email": 0.0051414672533968385,
+    "n_add_to_cart": 0.00512368222252162
+  },
+  "drifted_features": [
+    [
+      "n_events",
+      4.335407294974682
+    ],
+    [
+      "search_intensity",
+      4.939852627401161
+    ]
+  ],
+  "retraining_triggered": true
+}

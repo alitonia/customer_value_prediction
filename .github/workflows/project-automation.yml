@@ -6,15 +6,21 @@ on:
   pull_request:
     types: [opened]
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   automate-project:
     runs-on: ubuntu-latest
     steps:
       # Step 1: Add Issue or PR to the Project Board
-      # Note: This uses actions/add-to-project which requires a Personal Access Token (PAT) 
-      # with 'project' scope saved in secrets.PROJECT_PAT.
+      # Requires a PAT with 'project' scope saved as secrets.PROJECT_PAT.
+      # Falls back gracefully if not configured — board items can be added
+      # manually via: gh project item-add 5 --owner @me --url <issue-url>
       - name: Add to Project Board
-        uses: actions/add-to-project@v0.5.0
+        continue-on-error: true
+        uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/users/alitonia/projects/5
           github-token: ${{ secrets.PROJECT_PAT || secrets.GITHUB_TOKEN }}

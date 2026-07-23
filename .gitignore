@@ -143,6 +143,13 @@ plan/
 # Data files
 data/**/*
 !data/**/.gitkeep
+!data/synthetic/
+!data/synthetic/*.parquet
+!data/processed/
+!data/processed/*.parquet
+!data/processed/*.joblib
+!data/processed/*.md
+!data/processed/*.json
 
 # Temporary scratch folder
 scratch/
